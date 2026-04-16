@@ -9,16 +9,13 @@
 #define MAX_ITER 20
 
 __global__ void assignClusters(float *data, float *centroids, int *labels) {
-
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N) {
-
         float minDist = 1e20;
         int bestCluster = 0;
 
         for (int i = 0; i < K; i++) {
-
             float dist = fabs(data[idx] - centroids[i]);
 
             if (dist < minDist) {
@@ -26,17 +23,14 @@ __global__ void assignClusters(float *data, float *centroids, int *labels) {
                 bestCluster = i;
             }
         }
-
         labels[idx] = bestCluster;
     }
 }
 
 __global__ void updateCentroids(float *data, int *labels, float *centroids, int *counts) {
-
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < N) {
-
         int label = labels[idx];
 
         atomicAdd(&centroids[label], data[idx]);
@@ -46,27 +40,24 @@ __global__ void updateCentroids(float *data, int *labels, float *centroids, int 
 
 int main() {
 
-    float *data;
-    float *centroids;
-    int *labels;
+    float *data = (float*)malloc(N * sizeof(float));
+    float *centroids = (float*)malloc(K * sizeof(float));
+    int *labels = (int*)malloc(N * sizeof(int));
+    int *counts = (int*)malloc(K * sizeof(int));
 
-    float *d_data;
-    float *d_centroids;
-    int *d_labels;
-    int *d_counts;
-
-    data = (float*)malloc(N * sizeof(float));
-    centroids = (float*)malloc(K * sizeof(float));
-    labels = (int*)malloc(N * sizeof(int));
+    float *d_data, *d_centroids;
+    int *d_labels, *d_counts;
 
     srand(time(NULL));
 
-    for(int i = 0; i < N; i++)
+    // Initialize data
+    for (int i = 0; i < N; i++)
         data[i] = rand() % 1000;
 
-    for(int i = 0; i < K; i++)
+    for (int i = 0; i < K; i++)
         centroids[i] = rand() % 1000;
 
+    // Allocate GPU memory
     cudaMalloc(&d_data, N * sizeof(float));
     cudaMalloc(&d_centroids, K * sizeof(float));
     cudaMalloc(&d_labels, N * sizeof(int));
@@ -79,23 +70,35 @@ int main() {
 
     clock_t start = clock();
 
-    for(int iter = 0; iter < MAX_ITER; iter++) {
+    for (int iter = 0; iter < MAX_ITER; iter++) {
 
+        // Copy centroids to GPU
         cudaMemcpy(d_centroids, centroids, K * sizeof(float), cudaMemcpyHostToDevice);
+
+        // Reset counts and centroid sums
         cudaMemset(d_counts, 0, K * sizeof(int));
+        cudaMemset(d_centroids, 0, K * sizeof(float));
 
-        assignClusters<<<blocks, threads>>>(d_data, d_centroids, d_labels);
+        // Step 1: Assign clusters
+        assignClusters<<<blocks, threads>>>(d_data, centroids, d_labels);
+        cudaDeviceSynchronize();
 
-        cudaMemcpy(d_centroids, centroids, K * sizeof(float), cudaMemcpyHostToDevice);
-
+        // Step 2: Update centroids (sum + count)
         updateCentroids<<<blocks, threads>>>(d_data, d_labels, d_centroids, d_counts);
+        cudaDeviceSynchronize();
 
+        // Copy back results
         cudaMemcpy(centroids, d_centroids, K * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(counts, d_counts, K * sizeof(int), cudaMemcpyDeviceToHost);
 
+        // Compute average on CPU
+        for (int i = 0; i < K; i++) {
+            if (counts[i] > 0)
+                centroids[i] /= counts[i];
+        }
     }
 
     clock_t end = clock();
-
     float time = (float)(end - start) / CLOCKS_PER_SEC;
 
     printf("GPU Execution Time: %f seconds\n", time);
@@ -108,6 +111,7 @@ int main() {
     free(data);
     free(centroids);
     free(labels);
+    free(counts);
 
     return 0;
 }
