@@ -1,39 +1,44 @@
-#include <iostream>
-#include <cmath>
-#include <cstdlib>
-#include <ctime>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
 
 #define N 2000000
 #define K 5
 #define MAX_ITER 20
 
-using namespace std;
-
 int main() {
 
-    float* data = new float[N];
-    float centroids[K];
-    int* labels = new int[N];
+    float *data = (float*)malloc(N * sizeof(float));
+    float *centroids = (float*)malloc(K * sizeof(float));
+    int *labels = (int*)malloc(N * sizeof(int));
+    int *counts = (int*)malloc(K * sizeof(int));
 
     srand(time(NULL));
 
-    for (int i = 0;i < N;i++)
+    // Initialize data
+    for (int i = 0; i < N; i++)
         data[i] = rand() % 1000;
 
-    for (int i = 0;i < K;i++)
+    for (int i = 0; i < K; i++)
         centroids[i] = rand() % 1000;
 
     clock_t start = clock();
 
     for (int iter = 0; iter < MAX_ITER; iter++) {
 
-        for (int i = 0;i < N;i++) {
+        // Reset counts and centroid sums
+        for (int i = 0; i < K; i++) {
+            counts[i] = 0;
+            centroids[i] = 0;
+        }
 
+        // Step 1: Assign clusters
+        for (int i = 0; i < N; i++) {
             float minDist = 1e20;
             int bestCluster = 0;
 
-            for (int j = 0;j < K;j++) {
-
+            for (int j = 0; j < K; j++) {
                 float dist = fabs(data[i] - centroids[j]);
 
                 if (dist < minDist) {
@@ -45,28 +50,29 @@ int main() {
             labels[i] = bestCluster;
         }
 
-        float sum[K] = { 0 };
-        int count[K] = { 0 };
-
-        for (int i = 0;i < N;i++) {
-            sum[labels[i]] += data[i];
-            count[labels[i]]++;
+        // Step 2: Update centroids
+        for (int i = 0; i < N; i++) {
+            int label = labels[i];
+            centroids[label] += data[i];
+            counts[label]++;
         }
 
-        for (int j = 0;j < K;j++) {
-            if (count[j] != 0)
-                centroids[j] = sum[j] / count[j];
+        // Step 3: Compute averages
+        for (int i = 0; i < K; i++) {
+            if (counts[i] > 0)
+                centroids[i] /= counts[i];
         }
     }
 
     clock_t end = clock();
+    float time = (float)(end - start) / CLOCKS_PER_SEC;
 
-    double time = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("CPU Execution Time: %f seconds\n", time);
 
-    cout << "CPU Execution Time: " << time << " seconds" << endl;
-
-    delete[] data;
-    delete[] labels;
+    free(data);
+    free(centroids);
+    free(labels);
+    free(counts);
 
     return 0;
 }
